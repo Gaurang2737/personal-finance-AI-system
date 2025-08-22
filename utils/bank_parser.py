@@ -6,7 +6,6 @@ import pytesseract
 import re
 from PIL import Image
 
-# Use a relative import to bring in our expert parsers
 from .parsers import UnionBankParser, SbiParser
 
 # IMPORTANT: This line is specific to your local machine's Tesseract installation.
@@ -14,9 +13,6 @@ pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tessera
 
 
 class BankStatementParser:
-    """
-    The main controller for parsing bank statements.
-    """
 
     def __init__(self, file_stream, password=None):
         self.file_stream = file_stream
@@ -28,17 +24,11 @@ class BankStatementParser:
         self.known_banks = [bank for bank, parser in self.bank_parsers.items() if parser is not None]
 
     def identify_bank(self, pdf):
-        """
-        Identifies the bank using robust text-based "fingerprints".
-        """
         print("Attempting to identify bank via text extraction...")
         page_text = ""
-        # Read text from the first two pages to ensure we find the fingerprint
         for page in pdf.pages[:2]:
             page_text += page.extract_text(x_tolerance=1, y_tolerance=3) or ""
 
-        # --- THE FIX: Simplified and more robust logic ---
-        # We check for unique text fingerprints for each bank in a clear sequence.
         if "sbi.co.in" in page_text or "State Bank of India" in page_text:
             print("Bank identified as: State Bank of India (via text fingerprint)")
             return "State Bank of India"
@@ -46,7 +36,6 @@ class BankStatementParser:
             print("Bank identified as: Union Bank of India (via text fingerprint)")
             return "Union Bank of India"
 
-        # The OCR fallback is now a true last resort.
         print("Text-based identification failed. Falling back to OCR...")
         try:
             page_image = pdf.pages[0].to_image(resolution=200)
@@ -78,9 +67,6 @@ class BankStatementParser:
         return None
 
     def get_transactions(self):
-        """
-        Opens the PDF, identifies the bank, and runs the correct parser.
-        """
         try:
             pdf_file = pikepdf.open(self.file_stream, password=self.password)
             pdf_bytes = BytesIO()
