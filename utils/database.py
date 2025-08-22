@@ -1,8 +1,12 @@
 import pandas as pd
-from sqlalchemy import create_engine,Float,String,DateTime,Column,Integer,MetaData,ForeignKey
+from sqlalchemy import create_engine,Float,String,DateTime,Column,Integer,MetaData,ForeignKey,Boolean
 from sqlalchemy.orm import declarative_base,sessionmaker,relationship
+from pathlib import Path
 
-DataBase_URL = 'sqlite:///finance_tracker.db'
+_basedir = Path(__file__).parent
+_project_root = _basedir.parent
+db_path = _project_root / 'finance_tracker.db'
+DataBase_URL = f'sqlite:///{db_path}'
 
 engine = create_engine(DataBase_URL, echo=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -38,6 +42,7 @@ class Transactions(Base):
     amount = Column(Float,nullable=False)
     type = Column(String,nullable=False)
     category = Column(String,default='Uncategorized')
+    is_pass_through = Column(Boolean,default=False,nullable=False)
 
     account = relationship('Accounts',back_populates='transactions')
 
@@ -89,6 +94,20 @@ def save_transactions_to_db(df: pd.DataFrame, user_id : int, account_number : st
             print('No transactions to save')
     except Exception as e:
         print(f"An error occurred while saving the transactions: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+def update_pass_through_status(transaction_ids: list[int], status: bool):
+    db = SessionLocal()
+    try:
+        db.query(Transactions).filter(Transactions.id.in_(transaction_ids)).update(
+            {Transactions.is_pass_through,status},synchronize_session=False
+        )
+        db.commit()
+        print(f"Successfully updated pass-through status for IDs: {transaction_ids}")
+    except Exception as e:
+        print(f"Error updating pass-through status: {e}")
         db.rollback()
     finally:
         db.close()

@@ -7,7 +7,7 @@ import re
 from PIL import Image
 
 # Use a relative import to bring in our expert parsers
-from .parsers import UnionBankParser, SbiParser , BarodaBankParser
+from .parsers import UnionBankParser, SbiParser
 
 # IMPORTANT: This line is specific to your local machine's Tesseract installation.
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -22,7 +22,6 @@ class BankStatementParser:
         self.file_stream = file_stream
         self.password = password
         self.bank_parsers = {
-            "Bank of Baroda": BarodaBankParser(),
             "Union Bank of India": UnionBankParser(),
             "State Bank of India": SbiParser(),
         }
@@ -46,9 +45,6 @@ class BankStatementParser:
         if "Union Bank of India" in page_text and "Particulars" in page_text:
             print("Bank identified as: Union Bank of India (via text fingerprint)")
             return "Union Bank of India"
-        if "Bank of Baroda" in page_text or "bankofbaroda" in page_text:
-            print("Bank identified as: Bank of Baroda(via text fingerprint)")
-            return "Bank of Baroda"
 
         # The OCR fallback is now a true last resort.
         print("Text-based identification failed. Falling back to OCR...")
@@ -70,9 +66,6 @@ class BankStatementParser:
                 print("Bank identified as: State Bank of India (via OCR)")
                 return "Union Bank of India"
 
-            if "Bank of Baroda" in ocr_text:
-                print("Bank identified as: Bank of Baroda(via OCR)")
-                return "Bank of Baroda"
 
             match, score = process.extractOne(ocr_text, self.known_banks)
             if score > 80:

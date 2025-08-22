@@ -3,6 +3,7 @@ import re
 import pytesseract
 from PIL import Image
 from datetime import datetime
+import fitz
 
 
 class UnionBankParser:
@@ -174,115 +175,4 @@ class SbiParser:
         else:
             return self._parse_standard_format(pdf)
 
-
-class BarodaBankParser:
-    """
-    The definitive, expert parser for Bank of Baroda statements. This version
-    uses a robust, stateful parser on layout-preserved text to ensure
-    complete data integrity.
-    """
-
-    def _extract_account_number(self, page_text: str) -> str | None:
-        """Extracts the account number from the page text."""
-        match = re.search(r"Savings Account\s*-?\s*(\d{14,})", page_text)
-        if match:
-            return match.group(1)
-        return None
-
-    def _parse_balance(self, balance_str: str) -> float:
-        """Converts a balance string like '1,234.56 Cr' to a float for state tracking."""
-        if not isinstance(balance_str, str): return 0.0
-        balance_val = float(re.sub(r'[^\d.]', '', balance_str))
-        return -balance_val if "Dr" in balance_str else balance_val
-
-    def parse(self, pdf):
-        """
-        The main parsing method that orchestrates the definitive extraction strategy.
-        """
-        first_page_text = pdf.pages[0].extract_text()
-        account_number = self._extract_account_number(first_page_text)
-        if not account_number:
-            raise ValueError("Unable to extract Account number from the PDF.")
-        print(f"Extracted Account Number: {account_number}")
-
-        # --- Initialize the running balance from the Opening Balance ---
-        opening_balance_match = re.search(r"Opening Balance\s+([\d,.]+\s(?:Cr|Dr))", first_page_text)
-        if not opening_balance_match:
-            raise ValueError("Could not find Opening Balance on the first page.")
-        last_balance = self._parse_balance(opening_balance_match.group(1))
-
-        # --- A robust, stateful, line-by-line parser ---
-        all_transactions = []
-        current_transaction = {}
-
-        # A simple, robust regex to identify the START of a transaction line.
-        # It only checks for a date at the start and a balance at the end.
-        tx_start_regex = re.compile(r"^(\d{2}-\d{2}-\d{4}).*?([\d,.]+\s(?:Cr|Dr))$")
-
-        # Extract text with layout preservation
-        all_lines = []
-        for page in pdf.pages:
-            all_lines.extend(page.extract_text(x_tolerance=1).split('\n'))
-
-        for line in all_lines:
-            # Skip irrelevant lines
-            if not line.strip() or "Opening Balance" in line or "DATE NARRATION" in line:
-                continue
-
-            match = tx_start_regex.match(line)
-            if match:
-                # This line is the start of a new transaction.
-                # First, commit the previously completed transaction.
-                if current_transaction:
-                    all_transactions.append(current_transaction)
-
-                # --- Start a new transaction record ---
-                date_str, balance_str_with_cr_dr = match.groups()
-
-                # Find all numbers on the line to determine amount vs. balance
-                numbers = re.findall(r'[\d,]+\.\d{2}', line)
-
-                amount = 0.0
-                debit, credit = 0.0, 0.0
-
-                # The narration is everything between the date and the numbers at the end
-                narration = re.sub(r'(\s*[\d,]+\.\d{2}\s*)+(Cr|Dr)$', '', line.replace(date_str, '', 1)).strip()
-
-                if len(numbers) > 1:
-                    amount = float(numbers[-2].replace(",", ""))
-
-                current_balance = self._parse_balance(balance_str_with_cr_dr)
-
-                # Determine debit/credit by comparing balance change
-                if amount > 0:
-                    if abs(current_balance - (last_balance - amount)) < 0.01:
-                        debit = amount
-                    else:
-                        credit = amount
-
-                last_balance = current_balance
-
-                current_transaction = {
-                    "date": datetime.strptime(date_str, "%d-%m-%Y").date(),
-                    "details": narration,
-                    "debit": debit,
-                    "credit": credit,
-                    "balance": balance_str_with_cr_dr.split()[0].replace(",", "")
-                }
-            elif current_transaction:
-                # This is a continuation line for the narration.
-                current_transaction["details"] += " " + line.strip()
-
-        # Append the very last transaction
-        if current_transaction:
-            all_transactions.append(current_transaction)
-
-        if not all_transactions:
-            raise ValueError("No transaction rows could be parsed from the PDF.")
-
-        # --- Convert to DataFrame and Finalize ---
-        df = pd.DataFrame(all_transactions)
-        df['details'] = df['details'].str.replace(r'\s+', ' ', regex=True).str.strip()
-
-        print(df)
 
