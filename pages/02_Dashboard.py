@@ -6,6 +6,10 @@ from utils.database import SessionLocal, Transactions, Accounts, update_pass_thr
 from models.categorizer import SmartCategorizer
 from utils.transaction_analyzer import get_passthrough_transactions
 
+if 'user_id' not in st.session_state:
+    st.warning("Please log in to view this page.")
+    st.stop()
+
 @st.cache_resource
 def load_categorizer():
     return SmartCategorizer()

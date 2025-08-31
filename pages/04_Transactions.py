@@ -3,6 +3,10 @@ import pandas as pd
 
 from utils.database import SessionLocal, Transactions, Accounts
 
+if 'user_id' not in st.session_state:
+    st.warning("Please log in to view this page.")
+    st.stop()
+
 def get_transactions_for_user(user_id: int) -> pd.DataFrame:
     db = SessionLocal()
     try:

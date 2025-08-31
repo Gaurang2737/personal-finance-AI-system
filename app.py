@@ -1,8 +1,6 @@
 import streamlit as st
-import pandas as pd
-from io import BytesIO
-from utils.bank_parser import BankStatementParser
-from utils.database import create_database_and_table,save_transactions_to_db,User, SessionLocal
+from utils.database import SessionLocal, User, create_database_and_table
+from utils.auth import verify_password, hash_password_auth
 
 create_database_and_table()
 
@@ -12,76 +10,61 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title('Personal Finance AI System')
-st.write(
-    "Welcome! Please upload your password-protected bank statement PDF to begin. "
-    "Your data is processed locally and is not saved anywhere."
-)
-st.header('Step1: Enter your Username')
-username = st.text_input('Enter you username',help='This can be any name you choose')
+def show_login_page():
+    st.title("Personal Finance AI System")
+    st.write("Welcome back! Please Log in or sign up to Continue")
+    login_tab, sign_up_tab = st.tabs(['Login','Sign Up'])
+    with login_tab:
+        with st.form('login form'):
+            username= st.text_input("Username")
+            password = st.text_input("Password",type='password')
+            submitted = st.form_submit_button('Login')
 
-st.header('Step2: Please upload your statement')
-col1,col2 = st.columns(2)
+            if submitted:
+                db = SessionLocal()
+                user = db.query(User).filter_by(username=username).first()
+                db.close()
 
-with col1:
-    file_uploaded = st.file_uploader(
-        'Upload your bank statement',
-        type = ['pdf'],
-        help= 'Only password-protected PDF statements are supported.'
-    )
+                if user and verify_password(password,user.hashed_password):
+                    st.session_state["user_id"] = user.id
+                    st.session_state["username"] = user.username
+                    st.success('Logged in Successfully!!')
+                    st.rerun()
+                else:
+                    st.error('Incorrect Username or password')
 
-with col2:
-    file_password = st.text_input(
-        'Enter your pdf password',
-        type = 'password',
-        help="Your password is required to unlock and read the statement."
-    )
+    with sign_up_tab:
+        with st.form('Sign up'):
+            new_username_text = st.text_input("Choose a Username")
+            new_password_text = st.text_input('Choose a password')
+            submitted = st.form_submit_button('Sign up')
+            if submitted:
+                db = SessionLocal()
+                existing_user = db.query(User).filter_by(username=new_username_text).first()
+                if existing_user:
+                    st.error("Username already exists. Please choose another one")
+                else:
+                    hash_pass = hash_password_auth(new_password_text)
+                    new_user = User(username= new_username_text,hashed_password= hash_pass )
+                    db.add(new_user)
+                    db.commit()
+                    st.success("Account created successfully! Please go to the Login tab to log in.")
+                db.close()
 
-if st.button('Process Statement',type='primary'):
-    if username and file_uploaded and file_password:
-        st.spinner('Processing your bank statement..... This may take a moment')
-        db = SessionLocal()
-        try:
-            user = db.query(User).filter_by(username=username).first()
-            if not user:
-                print(f"Creating new user: {username}")
-                user = User(username=username)
-                db.add(user)
-                db.commit()
-                db.refresh(user)
-            st.session_state['user_id'] = user.id
-            print(f"Current username: {user.username} (ID: {user.id})")
+def show_main_page():
+    st.sidebar.title(f"Welcome, {st.session_state['username']}!")
+    st.sidebar.markdown("----")
 
-            file_bytes = BytesIO(file_uploaded.getvalue())
-            parser = BankStatementParser(file_bytes, file_password)
+    st.header("Welcome to your Personal Finance AI System")
+    st.write("Navigate to the different sections using the sidebar on the left.")
+    st.info("You can now upload new statements from the 'Upload Statement' page.")
 
-            bank_name, parsed_data = parser.get_transactions()
-            account_number = parsed_data['account_number']
-            transactions_df = parsed_data['transactions_df']
+    if st.sidebar.button('Logout'):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
 
-            save_transactions_to_db(
-                df=transactions_df,
-                bank_name=bank_name,
-                user_id= user.id,
-                account_number= account_number
-            )
-            st.session_state['transactions-df'] = transactions_df
-
-            st.success('✅ Statement processed and saved successfully!')
-            st.info("Navigate to the 'Dashboard' or 'Transactions' page from the sidebar to view your latest upload.")
-        except (ValueError,NotImplementedError) as e:
-            print(f"❌ error occurred: {e}")
-        except Exception as e:
-            print(f"❌ An Unexpected error occurred: {e}")
-        finally:
-            db.close()
-    else:
-        st.warning('Please provide a username, upload a file, and enter the password.')
-
-
-
-st.sidebar.header('Navigation')
-st.sidebar.info(
-    "This is a multi-page app. After processing your file, "
-    "use the navigation above to switch between pages."
-)
+if "user_id" in st.session_state:
+    show_main_page()
+else:
+    show_login_page()

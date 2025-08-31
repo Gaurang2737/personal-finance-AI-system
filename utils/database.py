@@ -17,6 +17,7 @@ class User(Base):
     __tablename__ = 'users'
     id = Column(Integer,primary_key = True,autoincrement=True)
     username = Column(String,unique=True,index=True,nullable=False)
+    hashed_password = Column(String,nullable=False)
 
     accounts = relationship('Accounts',back_populates='owner')
 
